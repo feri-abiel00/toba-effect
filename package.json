@@ -1,0 +1,20 @@
+{
+  "name": "toba-effect",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Toba Effect - Health as same as Grow. A fitness and wellness companion for cardio, strength and nutrition.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "firebase deploy --only hosting:toba-effect"
+  },
+  "dependencies": {
+    "firebase": "^11.3.1"
+  },
+  "devDependencies": {
+    "firebase-tools": "^13.34.0",
+    "vite": "^6.3.5"
+  }
+}
