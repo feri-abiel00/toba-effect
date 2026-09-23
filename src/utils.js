@@ -44,6 +44,15 @@ export function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+export function routeSample(points, max = 180) {
+  const pts = points || [];
+  if (pts.length <= max) return pts;
+  const out = [];
+  const step = (pts.length - 1) / (max - 1);
+  for (let i = 0; i < max; i++) out.push(pts[Math.round(i * step)]);
+  return out;
+}
+
 export function sanitize(html) {
   const el = document.createElement('div');
   el.textContent = html;

@@ -1,7 +1,7 @@
 import { getDb, isCloud } from './db';
 import { getUid } from './accounts';
 import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
-import { uid } from './utils';
+import { uid, routeSample } from './utils';
 
 const K_PREFIX = 'toba';
 
@@ -34,7 +34,7 @@ export function setWeight(w) {
 }
 
 // ---------------------------------------------------------------- workouts
-export function makeWorkout(activity, distance, durationSec, calories, mode) {
+export function makeWorkout(activity, distance, durationSec, calories, mode, points) {
   return {
     id: uid(),
     uid: getUid() || null,
@@ -45,7 +45,8 @@ export function makeWorkout(activity, distance, durationSec, calories, mode) {
     pace: distance > 0 ? durationSec / 60 / distance : 0,
     calories,
     ts: Date.now(),
-    mode: mode || 'gps'
+    mode: mode || 'gps',
+    points: routeSample(points || [], 180)
   };
 }
 

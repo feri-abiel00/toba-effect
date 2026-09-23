@@ -10,14 +10,21 @@ const ACTIVITIES = ['Run', 'Walk', 'Bike'];
 
 let timers = [];
 let currentMap = null;
+let routeMaps = [];
 
 function clearTimers() {
   timers.forEach((t) => clearInterval(t));
   timers = [];
 }
 
+function clearRouteMaps() {
+  routeMaps.forEach((m) => m.destroy());
+  routeMaps = [];
+}
+
 export async function renderPrimary(view, section, param) {
   clearTimers();
+  clearRouteMaps();
   if (currentMap) {
     currentMap.destroy();
     currentMap = null;
@@ -224,7 +231,14 @@ function renderTracker(body) {
     clearTimers();
     if (!session) return;
     const st = session.stop();
-    const rec = makeWorkout(activity, st.distance, Math.round(st.elapsed), st.calories, session.manual ? 'manual' : 'gps');
+    const rec = makeWorkout(
+      activity,
+      st.distance,
+      Math.round(st.elapsed),
+      st.calories,
+      session.manual ? 'manual' : 'gps',
+      session.points
+    );
     await saveWorkout(rec);
     session = null;
     status = 'idle';
@@ -245,7 +259,7 @@ function renderTracker(body) {
           <div class="stat"><div class="value">${rec.pace > 0 ? formatPace(rec.pace) : '--'}</div><div class="label">min/km</div></div>
           <div class="stat"><div class="value">${rec.calories}</div><div class="label">kcal</div></div>
         </div>
-        <p class="hint">Recorded as a <b>${rec.activity}</b> ${rec.mode === 'manual' ? '(manual)' : '(GPS)'} session in your history.</p>
+        <p class="hint">Recorded as a <b>${rec.activity}</b> ${rec.mode === 'manual' ? '(manual)' : '(GPS)'} session in your history. Your route line is saved too.</p>
         <div class="btn-row">
           <a class="btn btn-red" href="#/primary/history">View History</a>
           <button class="btn btn-brown" id="sum-again">Track Again</button>
@@ -291,26 +305,61 @@ async function renderHistory(body) {
   }
 
   listBox.innerHTML = list
-    .map(
-      (r) => `
-      <div class="list-item" data-id="${r.id}">
-        <div class="main">
-          <div class="act">${r.activity} ${r.mode === 'manual' ? '<span class="hint">(manual)</span>' : ''}</div>
-          <div class="sub">${formatDate(r.ts)}</div>
+    .map((r) => {
+      const hasRoute = Array.isArray(r.points) && r.points.length >= 2;
+      return `
+      <div class="hist-item" data-id="${r.id}">
+        <div class="list-item">
+          <div class="main">
+            <div class="act">${r.activity} ${r.mode === 'manual' ? '<span class="hint">(manual)</span>' : ''}</div>
+            <div class="sub">${formatDate(r.ts)}</div>
+          </div>
+          <div class="nums"><b>${r.distance.toFixed(2)} km</b><b>${formatTime(r.durationSec)}</b></div>
+          <div class="nums"><b>${r.speed.toFixed(2)} km/h</b><b>${r.pace > 0 ? formatPace(r.pace) : '--'} /km</b></div>
+          <div class="nums"><b>${r.calories} kcal</b></div>
+          <div class="route-actions">
+            ${hasRoute ? `<button class="btn btn-outline btn-sm" data-route="${r.id}">View route</button>` : ''}
+            <button class="danger" data-del="${r.id}">Delete</button>
+          </div>
         </div>
-        <div class="nums"><b>${r.distance.toFixed(2)} km</b><b>${formatTime(r.durationSec)}</b></div>
-        <div class="nums"><b>${r.speed.toFixed(2)} km/h</b><b>${r.pace > 0 ? formatPace(r.pace) : '--'} /km</b></div>
-        <div class="nums"><b>${r.calories} kcal</b></div>
-        <button class="danger" data-del="${r.id}">Delete</button>
-      </div>`
-    )
+        <div class="route-box" id="route-${r.id}" style="display:none;"></div>
+      </div>`;
+    })
     .join('');
+
+  listBox.querySelectorAll('[data-route]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.route;
+      const box = listBox.querySelector('#route-' + id);
+      const open = box.style.display !== 'none';
+      if (open) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+        btn.textContent = 'View route';
+        routeMaps = routeMaps.filter((m) => {
+          if (m.container === box) {
+            m.destroy();
+            return false;
+          }
+          return true;
+        });
+        return;
+      }
+      box.style.display = 'block';
+      btn.textContent = 'Hide route';
+      const rec = list.find((x) => x.id === id);
+      const map = new TrackMap(box);
+      routeMaps.push(map);
+      map.setPoints(rec.points);
+    });
+  });
 
   listBox.querySelectorAll('[data-del]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.del;
       if (!confirm('Delete this workout from your history?')) return;
       await removeWorkout(id);
+      clearRouteMaps();
       toast('Workout deleted.');
       await renderHistory(body);
     });

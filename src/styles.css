@@ -281,6 +281,31 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--red); borde
   font-family: inherit;
   font-size: 13px;
 }
+.btn-sm { padding: 6px 12px; font-size: 13px; }
+
+/* history items with route */
+.hist-item {
+  border: 1px solid #eee2d8;
+  background: var(--white);
+  border-radius: 12px;
+  padding: 6px 18px 12px;
+  margin-bottom: 12px;
+}
+.hist-item .list-item {
+  border: none;
+  background: none;
+  padding: 8px 0 4px;
+  margin: 0;
+}
+.route-actions { display: flex; gap: 8px; align-items: center; }
+.route-box {
+  height: 240px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--brown-light);
+  background: var(--brown-cream);
+  margin-top: 4px;
+}
 
 /* challenge grid */
 .chal-grid {
