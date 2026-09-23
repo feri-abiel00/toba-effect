@@ -8,6 +8,21 @@ Live demo: <https://toba-effect.web.app>
 
 ---
 
+## Accounts
+
+Toba Effect has a lightweight built-in account system (like ECO₂Track):
+
+- **Register first** — create an account with your full name, email, and password. You are signed in automatically after registering.
+- **Log In** — use your email and password on a later visit.
+- **Log Out** — switch accounts or sign out from the header chip.
+- **Guest Mode** — use the app without an account (records stay on this device only).
+
+Each account keeps its own workout history, challenge completions and records. When the cloud is reachable, accounts and records are stored in your Firestore `users`, `workouts` and `completions` collections. Passwords are never stored in plain text — only salted SHA-256 hashes.
+
+> For production, swap the built-in store for **Firebase Authentication** (Email/Password). The account functions in `src/accounts.js` keep the same call signatures, so the UI does not need to change.
+
+---
+
 ## The Three Effects
 
 ### 1. Primary Effect - Cardio (Strava-style)
@@ -67,6 +82,7 @@ All meals are calorie-tracked with a total per day, and every day's menu is diff
 
 - **Vanilla JavaScript (ES Modules)** with Vite as the bundler
 - **Firebase** (Firestore) for cloud track-record sync with automatic local fallback
+- **Built-in account system** — register, login, logout and guest mode with per-account data (see [Accounts](#accounts))
 - **Leaflet + OpenStreetMap** for GPS route rendering (canvas fallback included)
 - **CSS custom properties** with a red / white / brown theme and Times New Roman typography
 
@@ -99,14 +115,11 @@ npm run deploy
 
 ### Cloud sync (Firestore)
 
-Workout sessions and challenge completions are saved to the device first and then synced to Firestore when the cloud is reachable. To enable cloud sync:
+Workout sessions, challenge completions and accounts are saved to the device first and then synced to Firestore when the cloud is reachable. The app uses the project's default Firestore database (this project's database ID is `default`) and auto-detects connectivity on startup, so no setup is needed — the header badge shows **"Sync: Cloud"** or **"Sync: Local"**.
 
-1. Open the Firebase console for the `eco2track-new` project.
-2. Go to **Firestore Database** → **Create database**.
-3. Choose a location and start in **test mode** (or deploy the provided `firestore.rules` — it allows read/write, which is fine for a demo app).
-4. Any sessions you record will now be stored in the `workouts` and `completions` collections.
+The provided `firestore.rules` allow read/write, which is fine for a demo app (tighten them for production). Data lives in the `users`, `workouts` and `completions` collections.
 
-If Firestore is not enabled, the app keeps working normally using local device storage and shows **"Sync: Local device"** in the header.
+If Firestore is not enabled or unreachable, the app keeps working normally using local device storage.
 
 ---
 
@@ -120,10 +133,12 @@ If Firestore is not enabled, the app keeps working normally using local device s
 ├── firestore.rules
 ├── .firebaserc
 └── src
-    ├── main.js              # hash router + app shell
+    ├── main.js              # hash router + app shell (auth-gated)
     ├── styles.css           # red / white / brown theme
     ├── firebase.js          # Firebase configuration
-    ├── store.js             # persistence layer (local + Firestore)
+    ├── db.js                # Firestore connection + cloud probe
+    ├── accounts.js          # register / login / logout / guest mode
+    ├── store.js             # persistence layer (local + Firestore, per account)
     ├── utils.js             # formatting helpers
     ├── ui.js                # toast + UI helpers
     ├── components
@@ -135,6 +150,7 @@ If Firestore is not enabled, the app keeps working normally using local device s
     │   ├── strengthChallenges.js # 100 strength challenges
     │   └── nutrition.js          # 100-day meal plan
     └── pages
+        ├── account.js       # log in / register / guest
         ├── home.js          # landing / choose your path
         ├── primary.js       # tracker + challenges + history
         ├── secondary.js     # guides + challenges + AI coach

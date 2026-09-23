@@ -1,26 +1,10 @@
-import { app } from './firebase';
-import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { getDb, isCloud } from './db';
+import { getUid } from './accounts';
+import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { uid } from './utils';
 
-let db = null;
-let cloud = false;
+const K_PREFIX = 'toba';
 
-async function probeCloud() {
-  try {
-    db = getFirestore(app);
-    await getDocs(collection(db, '_probe'));
-    cloud = true;
-  } catch {
-    cloud = false;
-  }
-  return cloud;
-}
-
-export function getSyncStatus() {
-  return cloud ? 'cloud' : 'local';
-}
-
-// ---------------------------------------------------------------- local helpers
 function lsGet(key) {
   try {
     return JSON.parse(localStorage.getItem(key)) || null;
@@ -32,8 +16,13 @@ function lsSet(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
-const K_WORKOUTS = 'toba-workouts';
-const K_COMPLETIONS = 'toba-completions';
+function uidKey() {
+  return getUid() || 'guest';
+}
+
+export function getSyncStatus() {
+  return isCloud() ? 'cloud' : 'local';
+}
 
 // ---------------------------------------------------------------- weight
 export function getWeight() {
@@ -45,30 +34,50 @@ export function setWeight(w) {
 }
 
 // ---------------------------------------------------------------- workouts
+export function makeWorkout(activity, distance, durationSec, calories, mode) {
+  return {
+    id: uid(),
+    uid: getUid() || null,
+    activity,
+    distance,
+    durationSec,
+    speed: durationSec > 0 ? distance / (durationSec / 3600) : 0,
+    pace: distance > 0 ? durationSec / 60 / distance : 0,
+    calories,
+    ts: Date.now(),
+    mode: mode || 'gps'
+  };
+}
+
 export async function saveWorkout(rec) {
-  const local = lsGet(K_WORKOUTS) || [];
+  const key = `${K_PREFIX}-workouts-${uidKey()}`;
+  const local = lsGet(key) || [];
   local.push(rec);
-  lsSet(K_WORKOUTS, local);
-  if (cloud) {
+  lsSet(key, local);
+  if (isCloud() && rec.uid) {
     try {
-      await addDoc(collection(db, 'workouts'), rec);
+      await addDoc(collection(getDb(), 'workouts'), rec);
     } catch {
-      /* cloud write failed, local copy is kept */
+      /* cloud write failed, local copy kept */
     }
   }
   return rec;
 }
 
 export async function listWorkouts() {
+  const u = getUid();
+  const key = `${K_PREFIX}-workouts-${uidKey()}`;
   const map = new Map();
-  const local = lsGet(K_WORKOUTS) || [];
-  local.forEach((r) => map.set(r.id, r));
-  if (cloud) {
+  (lsGet(key) || []).forEach((r) => map.set(r.id, r));
+
+  if (isCloud() && u) {
     try {
-      const q = query(collection(db, 'workouts'), orderBy('ts', 'desc'));
+      const q = query(collection(getDb(), 'workouts'), orderBy('ts', 'desc'));
       const snap = await getDocs(q);
       snap.forEach((d) => {
-        const r = { id: d.id, ...d.data() };
+        const data = d.data();
+        if (data.uid !== u) return;
+        const r = { id: d.id, ...data };
         if (!r.id) r.id = uid();
         map.set(r.id, r);
       });
@@ -80,11 +89,12 @@ export async function listWorkouts() {
 }
 
 export async function removeWorkout(id) {
-  const local = (lsGet(K_WORKOUTS) || []).filter((r) => r.id !== id);
-  lsSet(K_WORKOUTS, local);
-  if (cloud) {
+  const key = `${K_PREFIX}-workouts-${uidKey()}`;
+  const local = (lsGet(key) || []).filter((r) => r.id !== id);
+  lsSet(key, local);
+  if (isCloud() && getUid()) {
     try {
-      await deleteDoc(doc(db, 'workouts', id));
+      await deleteDoc(doc(getDb(), 'workouts', id));
     } catch {
       /* ignore */
     }
@@ -93,14 +103,15 @@ export async function removeWorkout(id) {
 
 // ---------------------------------------------------------------- challenge completions
 export async function getCompletions(category) {
-  const key = `${K_COMPLETIONS}-${category}`;
+  const u = getUid();
+  const key = `${K_PREFIX}-completions-${uidKey()}-${category}`;
   const set = new Set(lsGet(key) || []);
-  if (cloud) {
+  if (isCloud() && u) {
     try {
-      const snap = await getDocs(collection(db, 'completions'));
+      const snap = await getDocs(collection(getDb(), 'completions'));
       snap.forEach((d) => {
         const data = d.data();
-        if (data.category === category) set.add(String(data.challengeId));
+        if (data.uid === u && data.category === category) set.add(String(data.challengeId));
       });
     } catch {
       /* ignore */
@@ -110,47 +121,34 @@ export async function getCompletions(category) {
 }
 
 export async function setCompletion(category, challengeId, completed) {
-  const key = `${K_COMPLETIONS}-${category}`;
+  const u = getUid();
+  const key = `${K_PREFIX}-completions-${uidKey()}-${category}`;
   const set = new Set(lsGet(key) || []);
   if (completed) set.add(String(challengeId));
   else set.delete(String(challengeId));
   lsSet(key, Array.from(set));
-  if (cloud) {
+
+  if (isCloud() && u) {
     try {
-      const snap = await getDocs(collection(db, 'completions'));
-      const matching = [];
+      const snap = await getDocs(collection(getDb(), 'completions'));
+      const matches = [];
       snap.forEach((d) => {
         const data = d.data();
-        if (data.category === category && String(data.challengeId) === String(challengeId)) {
-          matching.push(d.id);
+        if (data.uid === u && data.category === category && String(data.challengeId) === String(challengeId)) {
+          matches.push(d.id);
         }
       });
-      for (const id of matching) await deleteDoc(doc(db, 'completions', id));
+      for (const id of matches) await deleteDoc(doc(getDb(), 'completions', id));
       if (completed) {
-        await addDoc(collection(db, 'completions'), { category, challengeId, completedAt: Date.now() });
+        await addDoc(collection(getDb(), 'completions'), {
+          uid: u,
+          category,
+          challengeId,
+          completedAt: Date.now()
+        });
       }
     } catch {
       /* ignore */
     }
   }
-}
-
-// ---------------------------------------------------------------- bootstrap
-export async function initStore() {
-  await probeCloud();
-  return cloud;
-}
-
-export function makeWorkout(activity, distance, durationSec, calories, mode) {
-  return {
-    id: uid(),
-    activity,
-    distance,
-    durationSec,
-    speed: durationSec > 0 ? (distance / (durationSec / 3600)) : 0,
-    pace: distance > 0 ? durationSec / 60 / distance : 0,
-    calories,
-    ts: Date.now(),
-    mode: mode || 'gps'
-  };
 }
