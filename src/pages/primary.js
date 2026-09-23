@@ -1,6 +1,7 @@
 import { CARDIO_CHALLENGES } from '../data/cardioChallenges';
 import { TrackSession } from '../components/gps';
 import { TrackMap } from '../components/map';
+import { LiveLocator } from '../components/live';
 import { renderChallengeList } from '../components/challenges';
 import { getWeight, setWeight, listWorkouts, removeWorkout, makeWorkout, saveWorkout } from '../store';
 import { formatTime, formatPace, formatKmh, formatDate } from '../utils';
@@ -11,6 +12,7 @@ const ACTIVITIES = ['Run', 'Walk', 'Bike'];
 let timers = [];
 let currentMap = null;
 let routeMaps = [];
+let liveLoc = null;
 
 function clearTimers() {
   timers.forEach((t) => clearInterval(t));
@@ -25,6 +27,10 @@ function clearRouteMaps() {
 export async function renderPrimary(view, section, param) {
   clearTimers();
   clearRouteMaps();
+  if (liveLoc) {
+    liveLoc.destroy();
+    liveLoc = null;
+  }
   if (currentMap) {
     currentMap.destroy();
     currentMap = null;
@@ -86,6 +92,7 @@ function renderTracker(body) {
       </div>
 
       <div class="map-box" id="map-box"></div>
+      <div class="live-status" id="live-status">Locating your position...</div>
 
       <div id="manual-box" style="display:none;">
         <div class="row" style="background:var(--brown-cream);padding:16px;border-radius:12px;margin:14px 0;">
@@ -109,6 +116,28 @@ function renderTracker(body) {
   const manDist = body.querySelector('#man-dist');
   const wInput = body.querySelector('#w-input');
   const mapBox = body.querySelector('#map-box');
+  const liveStatus = body.querySelector('#live-status');
+
+  function startLive() {
+    if (liveLoc) {
+      liveLoc.destroy();
+      liveLoc = null;
+    }
+    const live = new LiveLocator(mapBox);
+    liveLoc = live;
+    live.onStatus = (txt) => {
+      liveStatus.textContent = txt;
+    };
+    live.start();
+  }
+
+  function stopLive() {
+    if (liveLoc) {
+      liveLoc.destroy();
+      liveLoc = null;
+    }
+  }
+  startLive();
 
   wInput.addEventListener('change', () => {
     weight = Number(wInput.value) || 70;
@@ -176,6 +205,7 @@ function renderTracker(body) {
 
   function startGps() {
     if (session) return;
+    stopLive();
     session = new TrackSession(activity, weight);
     const err = session.startGps();
     status = 'active';
@@ -196,6 +226,7 @@ function renderTracker(body) {
 
   function startManual() {
     if (session) return;
+    stopLive();
     const km = parseFloat(manDist.value);
     if (!isFinite(km) || km <= 0) {
       toast('Enter a valid distance first.');
@@ -240,10 +271,15 @@ function renderTracker(body) {
       session.points
     );
     await saveWorkout(rec);
+    if (map) {
+      map.destroy();
+      map = null;
+    }
     session = null;
     status = 'idle';
     drawControls();
     showSummary(rec);
+    startLive();
   }
 
   function showSummary(rec) {

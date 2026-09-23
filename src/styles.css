@@ -234,6 +234,14 @@ footer {
   position: relative;
   background: var(--brown-cream);
 }
+.live-status {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-soft);
+  margin-top: -8px;
+  margin-bottom: 4px;
+}
+.map-status { color: var(--text-soft); margin: 0; }
 /* inputs */
 input, select, textarea {
   font-family: inherit;
